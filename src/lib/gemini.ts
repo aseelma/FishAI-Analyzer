@@ -50,6 +50,7 @@ export async function analyzeFishImage(imageData: string, mimeType: string): Pro
           2. SPECIES: For each fish, you MUST pick the EXACT name from this list: [${allowedSpecies}]. 
              - Examine body shape, fin patterns, and specific markings (spots, stripes).
              - If a fish is not exactly in the list, you MUST choose the closest biological match from the list.
+             - CRITICAL: The 'name' field in 'possible_species' MUST ONLY contain a species name from the list. NEVER include words like "Confidence", "number", "Value", or any technical descriptions.
           3. CATEGORIES: Identify the Family and Group. Group MUST be one of: ${allowedGroups.join(", ")}.
           
           Return ONLY this JSON structure:
@@ -117,5 +118,22 @@ export async function analyzeFishImage(imageData: string, mimeType: string): Pro
     },
   });
 
-  return JSON.parse(response.text);
+  const text = response.text;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("Failed to parse AI response as JSON:", text);
+    
+    // Attempt to fix common truncation issues (unterminated strings or objects)
+    let fixedText = text.trim();
+    
+    // If it ends with a partial string or property, try to close it
+    if (fixedText.endsWith('"')) {
+      // Might be a truncated string value
+    }
+    
+    // Basic recovery: find the last complete object in the array if possible
+    // or just throw a more descriptive error
+    throw new Error(`AI returned malformed JSON: ${e instanceof Error ? e.message : 'Unknown error'}`);
+  }
 }

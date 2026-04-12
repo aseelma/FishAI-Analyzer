@@ -90,7 +90,11 @@ export default function FishAnalyzer() {
       setResult(analysis);
     } catch (err) {
       console.error(err);
-      setError('Failed to analyze image. Please try again with a different image.');
+      if (err instanceof Error && err.message.includes('JSON')) {
+        setError('Analysis interrupted. Please try clicking "Start AI Analysis" again.');
+      } else {
+        setError('Failed to analyze image. Please try again with a different image.');
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -104,28 +108,67 @@ export default function FishAnalyzer() {
     setAspectRatio(null);
   };
 
-  const swapSpecies = (fishIndex: number, alternativeIndex: number) => {
+  const swapSpecies = (groupIndex: number, alternativeIndex: number) => {
     if (!result) return;
     
+    const group = fishList[groupIndex];
+    const alternative = group.possible_species![alternativeIndex];
+    
     const newResult = { ...result };
-    const fish = { ...newResult.fish[fishIndex] };
-    const alternative = fish.possible_species![alternativeIndex];
+    const newFish = [...newResult.fish];
     
-    // Store old primary
-    const oldPrimary = { name: fish.species, confidence: fish.confidence };
+    // Update all fish that belong to this group
+    group.originalIndices.forEach(idx => {
+      const fish = { ...newFish[idx] };
+      const oldPrimary = { name: fish.species, confidence: fish.confidence };
+      
+      fish.species = alternative.name;
+      fish.confidence = alternative.confidence;
+      
+      // We need to find the correct alternative to swap with in the individual fish's list
+      // since the order might be different (though unlikely with current AI behavior)
+      const altIdx = fish.possible_species?.findIndex(ps => ps.name === alternative.name);
+      if (altIdx !== undefined && altIdx !== -1) {
+        fish.possible_species![altIdx] = oldPrimary;
+      }
+      
+      newFish[idx] = fish;
+    });
     
-    // Swap
-    fish.species = alternative.name;
-    fish.confidence = alternative.confidence;
-    fish.possible_species![alternativeIndex] = oldPrimary;
-    
-    newResult.fish[fishIndex] = fish;
+    newResult.fish = newFish;
     setResult(newResult);
   };
 
   const fishList = React.useMemo(() => {
     if (!result) return [];
-    return result.fish;
+    
+    const groups: Record<string, any> = {};
+    
+    result.fish.forEach((f, idx) => {
+      // Create a unique key based on species and possible_species names
+      const possibleNames = (f.possible_species || [])
+        .map(ps => ps.name)
+        .sort()
+        .join('|');
+      const key = `${f.species}-${possibleNames}`;
+      
+      if (!groups[key]) {
+        groups[key] = {
+          ...f,
+          count: 1,
+          originalIndices: [idx]
+        };
+      } else {
+        groups[key].count += 1;
+        groups[key].originalIndices.push(idx);
+        // Average the confidence/measurements for the group display
+        groups[key].confidence = (groups[key].confidence * (groups[key].count - 1) + f.confidence) / groups[key].count;
+        groups[key].estimated_length_cm = (groups[key].estimated_length_cm * (groups[key].count - 1) + f.estimated_length_cm) / groups[key].count;
+        groups[key].estimated_weight_kg = (groups[key].estimated_weight_kg * (groups[key].count - 1) + f.estimated_weight_kg) / groups[key].count;
+      }
+    });
+    
+    return Object.values(groups);
   }, [result]);
 
   return (
@@ -327,6 +370,11 @@ export default function FishAnalyzer() {
                                   <span className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-slate-900 text-white text-[9px] md:text-[10px] font-bold rounded-md md:rounded-lg">
                                     {i + 1}
                                   </span>
+                                  {f.count > 1 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[8px] font-bold px-1 rounded-full border border-white">
+                                      x{f.count}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex flex-col">
                                   <h4 className="text-sm md:text-lg font-bold text-slate-900 leading-tight">{f.species}</h4>
@@ -369,7 +417,10 @@ export default function FishAnalyzer() {
                                   !ps.name.includes('{') && 
                                   !ps.name.includes('[') &&
                                   !ps.name.toLowerCase().includes('instruction') &&
-                                  !ps.name.toLowerCase().includes('list')
+                                  !ps.name.toLowerCase().includes('list') &&
+                                  !ps.name.toLowerCase().includes('confidence') &&
+                                  !ps.name.toLowerCase().includes('value') &&
+                                  !ps.name.toLowerCase().includes('number')
                                 )
                                 .map((ps, j) => (
                                 <Badge 
