@@ -1,0 +1,5 @@
+{
+  "name": "Remix: FishAI Analyzer",
+  "description": "Professional AI-powered fish detection and species identification for fishermen. Upload images to count fish, identify species, and estimate weight and length.",
+  "requestFramePermissions": []
+}
