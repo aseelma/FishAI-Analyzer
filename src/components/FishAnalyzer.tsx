@@ -86,7 +86,7 @@ export default function FishAnalyzer() {
         });
       }
 
-      const analysis = await analyzeFishImage(base64Data, mimeType);
+      const analysis = await analyzeFishImage(base64Data, mimeType, image.startsWith('data:') ? undefined : image);
       setResult(analysis);
     } catch (err) {
       console.error(err);
@@ -108,67 +108,29 @@ export default function FishAnalyzer() {
     setAspectRatio(null);
   };
 
-  const swapSpecies = (groupIndex: number, alternativeIndex: number) => {
+  const swapSpecies = (fishIndex: number, alternativeIndex: number) => {
     if (!result) return;
     
-    const group = fishList[groupIndex];
-    const alternative = group.possible_species![alternativeIndex];
-    
     const newResult = { ...result };
-    const newFish = [...newResult.fish];
+    const newFishList = [...newResult.fish];
+    const fish = { ...newFishList[fishIndex] };
     
-    // Update all fish that belong to this group
-    group.originalIndices.forEach(idx => {
-      const fish = { ...newFish[idx] };
-      const oldPrimary = { name: fish.species, confidence: fish.confidence };
-      
-      fish.species = alternative.name;
-      fish.confidence = alternative.confidence;
-      
-      // We need to find the correct alternative to swap with in the individual fish's list
-      // since the order might be different (though unlikely with current AI behavior)
-      const altIdx = fish.possible_species?.findIndex(ps => ps.name === alternative.name);
-      if (altIdx !== undefined && altIdx !== -1) {
-        fish.possible_species![altIdx] = oldPrimary;
-      }
-      
-      newFish[idx] = fish;
-    });
+    if (!fish.possible_species) return;
     
-    newResult.fish = newFish;
+    const alternative = fish.possible_species[alternativeIndex];
+    const oldPrimary = { name: fish.species, confidence: fish.confidence };
+    
+    fish.species = alternative.name;
+    fish.confidence = alternative.confidence;
+    fish.possible_species[alternativeIndex] = oldPrimary;
+    
+    newFishList[fishIndex] = fish;
+    newResult.fish = newFishList;
     setResult(newResult);
   };
 
   const fishList = React.useMemo(() => {
-    if (!result) return [];
-    
-    const groups: Record<string, any> = {};
-    
-    result.fish.forEach((f, idx) => {
-      // Create a unique key based on species and possible_species names
-      const possibleNames = (f.possible_species || [])
-        .map(ps => ps.name)
-        .sort()
-        .join('|');
-      const key = `${f.species}-${possibleNames}`;
-      
-      if (!groups[key]) {
-        groups[key] = {
-          ...f,
-          count: 1,
-          originalIndices: [idx]
-        };
-      } else {
-        groups[key].count += 1;
-        groups[key].originalIndices.push(idx);
-        // Average the confidence/measurements for the group display
-        groups[key].confidence = (groups[key].confidence * (groups[key].count - 1) + f.confidence) / groups[key].count;
-        groups[key].estimated_length_cm = (groups[key].estimated_length_cm * (groups[key].count - 1) + f.estimated_length_cm) / groups[key].count;
-        groups[key].estimated_weight_kg = (groups[key].estimated_weight_kg * (groups[key].count - 1) + f.estimated_weight_kg) / groups[key].count;
-      }
-    });
-    
-    return Object.values(groups);
+    return result?.fish || [];
   }, [result]);
 
   return (
@@ -251,24 +213,6 @@ export default function FishAnalyzer() {
                       className="block w-full h-full object-contain max-h-[60vh] lg:max-h-[calc(100vh-280px)]"
                       referrerPolicy="no-referrer"
                     />
-                    
-                    {/* Bounding Boxes Overlay */}
-                    {result && result.fish.map((f, i) => f.bounding_box && (
-                      <div
-                        key={i}
-                        className="absolute border-2 border-blue-400 bg-blue-400/10 rounded-sm pointer-events-none shadow-[0_0_10px_rgba(59,130,246,0.3)] z-10"
-                        style={{
-                          top: `${f.bounding_box[0] / 10}%`,
-                          left: `${f.bounding_box[1] / 10}%`,
-                          height: `${(f.bounding_box[2] - f.bounding_box[0]) / 10}%`,
-                          width: `${(f.bounding_box[3] - f.bounding_box[1]) / 10}%`,
-                        }}
-                      >
-                        <span className="absolute -top-5 md:-top-6 left-0 bg-blue-600 text-white text-[9px] md:text-[10px] px-1 md:px-1.5 py-0.5 rounded-t-sm whitespace-nowrap font-bold shadow-lg">
-                          #{i + 1}
-                        </span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               )}
@@ -377,7 +321,9 @@ export default function FishAnalyzer() {
                                   )}
                                 </div>
                                 <div className="flex flex-col">
-                                  <h4 className="text-sm md:text-lg font-bold text-slate-900 leading-tight">{f.species}</h4>
+                                  <h4 className="text-sm md:text-lg font-bold text-slate-900 leading-tight">
+                                    {f.species.length > 50 ? f.species.substring(0, 50) + '...' : f.species}
+                                  </h4>
                                   <div className="flex items-center gap-2">
                                     <span className="text-[9px] md:text-[10px] text-blue-600 font-semibold italic uppercase tracking-wider">{f.family}</span>
                                     <span className="w-1 h-1 rounded-full bg-slate-300" />
@@ -387,7 +333,7 @@ export default function FishAnalyzer() {
                               </div>
                               <div className="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-500 font-medium">
                                 <span className="flex items-center gap-1 bg-slate-50 px-1.5 md:px-2 py-0.5 md:py-1 rounded-md">
-                                  <Ruler className="w-2.5 h-2.5 md:w-3 md:h-3 text-blue-500" /> ~{f.estimated_length_cm}cm
+                                  <Ruler className="w-2.5 h-2.5 md:w-3 md:h-3 text-blue-500" /> ~{f.estimated_length_cm.toFixed(2)}cm
                                 </span>
                                 <span className="flex items-center gap-1 bg-slate-50 px-1.5 md:px-2 py-0.5 md:py-1 rounded-md">
                                   <Scale className="w-2.5 h-2.5 md:w-3 md:h-3 text-blue-500" /> ~{f.estimated_weight_kg.toFixed(2)}kg
