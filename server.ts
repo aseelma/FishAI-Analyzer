@@ -1,16 +1,12 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import fetch from "node-fetch";
 import fs from "fs";
 import { analyzeFishImage } from "./src/lib/gemini";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // Load the compiled image database of fish records for Zanzibar Swahili testing
-const dbPath = path.join(__dirname, "src", "constants", "image_db.json");
+const dbPath = path.join(process.cwd(), "src", "constants", "image_db.json");
 let imageDb: Record<string, any> = {};
 try {
   if (fs.existsSync(dbPath)) {
